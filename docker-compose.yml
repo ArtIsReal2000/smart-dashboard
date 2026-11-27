@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartdash-db
+    environment:
+      POSTGRES_DB: smartdash
+      POSTGRES_USER: smartdash
+      POSTGRES_PASSWORD: smartdash_secret_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: smartdash-app
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/smartdash
+      SPRING_DATASOURCE_USERNAME: smartdash
+      SPRING_DATASOURCE_PASSWORD: smartdash_secret_password
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-placeholder}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-placeholder}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-u6xW9T3Z1z/J0xP9Yv2N8kR4q7L5s0M8b4V2C1x9A8w=}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
