@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Dashboard — Unified Inbox & Deadlines</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" th:href="@{/css/dashboard.css}">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 h-screen flex flex-col overflow-hidden selection:bg-brand-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-16 px-5 border-b border-white/10 bg-[#0d121f]/90 backdrop-blur-md flex items-center justify-between z-30 flex-shrink-0">
+        
+        <!-- Logo & Title -->
+        <div class="flex items-center space-x-3 w-64">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i data-lucide="mail-check" class="w-5 h-5 text-white"></i>
+            </div>
+            <div>
+                <span class="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
+                    Smart Dashboard
+                </span>
+                <span class="text-[10px] text-slate-400 block -mt-0.5">Inbox Intelligence</span>
+            </div>
+        </div>
+
+        <!-- Global Search Bar -->
+        <div class="flex-1 max-w-xl mx-4">
+            <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                <input id="searchInput" type="text"
+                       oninput="handleSearch(this.value)"
+                       placeholder="Search subjects, senders, deadlines, or keywords... (Press / to focus)"
+                       class="w-full pl-10 pr-10 py-2 rounded-xl bg-slate-900/80 border border-white/10 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Quick Actions & User Profile -->
+        <div class="flex items-center space-x-3">
+            <!-- Sync Trigger Button -->
+            <button id="syncNowBtn" onclick="triggerManualSync()" title="Trigger manual sync now"
+                    class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 hover:text-white transition">
+                <i id="syncIcon" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span id="syncText">Sync Now</span>
+            </button>
+
+            <!-- Add Account Button -->
+            <div class="relative">
+                <button onclick="toggleAccountMenu()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span>Add Account</span>
+                </button>
+                <!-- Dropdown -->
+                <div id="accountDropdown" class="hidden absolute right-0 mt-2 w-48 rounded-xl bg-slate-900 border border-white/15 shadow-2xl py-1 z-50">
+                    <a th:href="@{/accounts/add-google}" class="flex items-center space-x-2 px-3 py-2 text-xs text-slate-200 hover:bg-indigo-600/20 hover:text-indigo-300 transition">
+                        <i data-lucide="mail" class="w-4 h-4 text-red-400"></i>
+                        <span>Connect Gmail (OAuth)</span>
+                    </a>
+                    <button onclick="openImapModal()" class="w-full text-left flex items-center space-x-2 px-3 py-2 text-xs text-slate-200 hover:bg-indigo-600/20 hover:text-indigo-300 transition">
+                        <i data-lucide="server" class="w-4 h-4 text-cyan-400"></i>
+                        <span>Connect IMAP Account</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- User Menu -->
+            <div class="flex items-center space-x-2.5 pl-2 border-l border-white/10">
+                <img th:if="${user.avatarUrl}" th:src="${user.avatarUrl}" class="w-8 h-8 rounded-full border border-indigo-400/30 object-cover" alt="User">
+                <div th:unless="${user.avatarUrl}" class="w-8 h-8 rounded-full bg-indigo-700 text-white text-xs font-bold flex items-center justify-center">
+                    <span th:text="${#strings.substring(user.displayName, 0, 1)}">U</span>
+                </div>
+                <div class="hidden md:block text-left">
+                    <span class="text-xs font-semibold text-white block leading-tight" th:text="${user.displayName}">Alex Mercer</span>
+                    <span class="text-[10px] text-slate-400 block" th:text="${user.email}">user@mail.com</span>
+                </div>
+                <a th:href="@{/login?logout=true}" title="Sign out" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main 3-Column Layout -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- COLUMN 1: Left Navigation Sidebar -->
+        <aside class="w-64 border-r border-white/10 bg-[#0d121f]/50 flex flex-col justify-between overflow-y-auto flex-shrink-0 p-4 space-y-6">
+            
+            <div class="space-y-6">
+                <!-- Mini Stats Pill Cards -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="p-2.5 rounded-xl glass-card border border-white/5 space-y-0.5">
+                        <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total Mail</span>
+                        <div class="text-lg font-extrabold text-white" id="statTotalEmails" th:text="${totalEmails}">0</div>
+                    </div>
+                    <div class="p-2.5 rounded-xl glass-card border border-rose-500/20 bg-rose-500/5 space-y-0.5">
+                        <span class="text-[10px] text-rose-300 uppercase tracking-wider font-semibold">Deadlines</span>
+                        <div class="text-lg font-extrabold text-rose-400" id="statDeadlineEmails" th:text="${deadlineEmails}">0</div>
+                    </div>
+                </div>
+
+                <!-- Primary Views Navigation -->
+                <div class="space-y-1">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Navigation</span>
+                    <button onclick="setFilter('all')" id="nav-all"
+                            class="nav-btn active-nav w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-200 transition">
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="inbox" class="w-4 h-4 text-indigo-400"></i>
+                            <span>All Inboxes</span>
+                        </div>
+                    </button>
+
+                    <button onclick="setFilter('deadlines')" id="nav-deadlines"
+                            class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition">
+                        <div class="flex items-center space-x-2.5">
+                            <i data-lucide="flame" class="w-4 h-4 text-rose-400"></i>
+                            <span>Action Deadlines</span>
+                        </div>
+                        <span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30" th:text="${deadlineEmails}">0</span>
+                    </button>
+                </div>
+
+                <!-- Tags Section -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between px-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tags</span>
+                        <button onclick="openNewTagModal()" class="text-slate-400 hover:text-indigo-400 text-xs" title="Create new tag">
+                            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                    <div id="tagsList" class="space-y-1">
+                        <!-- Loaded dynamically via JS -->
+                        <div class="text-xs text-slate-400 italic px-2">Loading tags...</div>
+                    </div>
+                </div>
+
+                <!-- Organizations Section -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between px-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Organizations</span>
+                    </div>
+                    <div id="orgsList" class="space-y-1">
+                        <!-- Loaded dynamically via JS -->
+                        <div class="text-xs text-slate-400 italic px-2">Loading organizations...</div>
+                    </div>
+                </div>
+
+                <!-- Connected Mail Accounts -->
+                <div class="space-y-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Connected Accounts</span>
+                    <div class="space-y-1.5">
+                        <div th:each="acc : ${accounts}" class="px-2.5 py-2 rounded-xl glass-card text-xs space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="font-medium text-slate-200 truncate" th:text="${acc.emailAddress}">email</span>
+                                <span class="text-[10px] px-1.5 py-0.2 rounded font-semibold text-slate-300 uppercase"
+                                      th:classappend="${acc.provider.name() == 'GMAIL' ? 'bg-red-500/20 text-red-300' : 'bg-cyan-500/20 text-cyan-300'}"
+                                      th:text="${acc.provider}">GMAIL</span>
+                            </div>
+                            <div class="text-[10px] text-slate-400 flex items-center justify-between">
+                                <span>Synced:</span>
+                                <span th:text="${acc.lastSyncAt != null ? #temporals.format(acc.lastSyncAt, 'HH:mm') : 'Pending'}">Just now</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom system tag -->
+            <div class="pt-4 border-t border-white/5 text-[11px] text-slate-400 text-center">
+                AES-256-GCM Encrypted Storage
+            </div>
+        </aside>
+
+        <!-- COLUMN 2: Middle Email Feed -->
+        <section class="w-96 md:w-[420px] border-r border-white/10 bg-[#0b0f19] flex flex-col flex-shrink-0 overflow-hidden">
+            
+            <!-- Feed Control Bar -->
+            <div class="p-3.5 border-b border-white/10 bg-[#0d121f]/50 flex items-center justify-between">
+                <div>
+                    <h2 id="feedTitle" class="text-xs font-bold text-white uppercase tracking-wider">Inbox Feed</h2>
+                    <span id="feedCount" class="text-[11px] text-slate-400">0 emails</span>
+                </div>
+                
+                <!-- Sort options -->
+                <div class="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-lg border border-white/10 text-[11px]">
+                    <button onclick="setSort('date')" id="sort-date" class="sort-btn px-2 py-1 rounded bg-indigo-600 text-white font-medium">Date</button>
+                    <button onclick="setSort('deadline')" id="sort-deadline" class="sort-btn px-2 py-1 rounded text-slate-400 hover:text-white">Deadline</button>
+                    <button onclick="setSort('sender')" id="sort-sender" class="sort-btn px-2 py-1 rounded text-slate-400 hover:text-white">Sender</button>
+                </div>
+            </div>
+
+            <!-- Email Scroll List -->
+            <div id="emailList" class="flex-1 overflow-y-auto divide-y divide-white/5">
+                <div class="p-8 text-center text-slate-400 text-xs">
+                    <i data-lucide="loader" class="w-6 h-6 animate-spin mx-auto text-indigo-400 mb-2"></i>
+                    <span>Loading unified emails...</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- COLUMN 3: Right Email Detail Viewer -->
+        <main class="flex-1 bg-[#090d16] flex flex-col overflow-hidden relative">
+            <div id="emailDetailPane" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Empty Placeholder State -->
+                <div class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                    <div class="w-16 h-16 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-xl shadow-indigo-600/10">
+                        <i data-lucide="mail-open" class="w-8 h-8"></i>
+                    </div>
+                    <div class="max-w-xs space-y-1">
+                        <h3 class="text-base font-bold text-white">No Message Selected</h3>
+                        <p class="text-xs text-slate-400">Select an email from the inbox list to inspect extracted deadlines, tags, and complete conversation history.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL: Add IMAP Account -->
+    <div id="imapModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-6 rounded-2xl border border-white/15 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2.5">
+                    <div class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
+                        <i data-lucide="server" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-white">Add IMAP Account</h3>
+                </div>
+                <button onclick="closeImapModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form onsubmit="handleImapSubmit(event)" class="space-y-3.5 text-xs">
+                <div>
+                    <label class="block text-slate-300 font-semibold mb-1">Email Address</label>
+                    <input id="imapEmail" type="email" required placeholder="user@company.com"
+                           class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500">
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="col-span-2">
+                        <label class="block text-slate-300 font-semibold mb-1">IMAP Host</label>
+                        <input id="imapHost" type="text" required placeholder="imap.company.com"
+                               class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500">
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1">Port</label>
+                        <input id="imapPort" type="number" value="993" required
+                               class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-slate-300 font-semibold mb-1">Password or App Password</label>
+                    <input id="imapPassword" type="password" required placeholder="••••••••••••"
+                           class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500">
+                    <span class="text-[10px] text-slate-400 mt-1 block">Credentials are encrypted with AES-256-GCM.</span>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeImapModal()" class="px-4 py-2 rounded-xl glass-card text-slate-300 hover:text-white">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-md">Connect Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Create New Tag -->
+    <div id="newTagModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-sm p-6 rounded-2xl border border-white/15 space-y-5 shadow-2xl">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <i data-lucide="tag" class="w-4 h-4 text-indigo-400"></i>
+                    <span>Create Tag</span>
+                </h3>
+                <button onclick="closeNewTagModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form onsubmit="handleTagSubmit(event)" class="space-y-4 text-xs">
+                <div>
+                    <label class="block text-slate-300 font-semibold mb-1">Tag Name</label>
+                    <input id="newTagNameInput" type="text" required placeholder="e.g. Legal, Project Alpha"
+                           class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-slate-300 font-semibold mb-1">Tag Color</label>
+                    <div class="flex items-center space-x-2">
+                        <input id="newTagColorInput" type="color" value="#6366f1" class="w-9 h-9 rounded-lg cursor-pointer bg-transparent border-0">
+                        <span class="text-slate-400 text-[11px]">Select a color for quick visual identification</span>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeNewTagModal()" class="px-4 py-2 rounded-xl glass-card text-slate-300 hover:text-white">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Create Tag</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 hidden px-4 py-3 rounded-xl glass-panel border border-white/20 text-xs font-medium text-white shadow-2xl flex items-center space-x-2">
+        <i id="toastIcon" data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+        <span id="toastMsg">Operation successful</span>
+    </div>
+
+    <!-- APPLICATION CLIENT SCRIPT -->
+    <script>
+        // State variables
+        let currentEmails = [];
+        let selectedEmailId = null;
+        let activeFilter = 'all'; // 'all', 'deadlines', 'tag', 'org'
+        let activeTagId = null;
+        let activeOrgId = null;
+        let activeSort = 'date';
+        let searchQuery = '';
+        let allTags = [];
+        let allOrgs = [];
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadTags();
+            loadOrgs();
+            loadEmails();
+
+            // Keyboard shortcut for search
+            window.addEventListener('keydown', (e) => {
+                if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    document.getElementById('searchInput').focus();
+                }
+            });
+        });
+
+        // Load emails with current filters
+        async function loadEmails() {
+            const listContainer = document.getElementById('emailList');
+            let url = `/api/emails?sortBy=${activeSort}`;
+
+            if (activeFilter === 'deadlines') url += '&hasDeadline=true';
+            if (activeTagId) url += `&tagId=${activeTagId}`;
+            if (activeOrgId) url += `&orgId=${activeOrgId}`;
+            if (searchQuery.trim()) url += `&q=${encodeURIComponent(searchQuery.trim())}`;
+
+            try {
+                const res = await fetch(url);
+                currentEmails = await res.json();
+                document.getElementById('feedCount').innerText = `${currentEmails.length} email${currentEmails.length === 1 ? '' : 's'}`;
+                renderEmailList(currentEmails);
+
+                if (selectedEmailId) {
+                    const found = currentEmails.find(e => e.id === selectedEmailId);
+                    if (found) loadEmailDetail(selectedEmailId);
+                }
+            } catch (err) {
+                console.error("Failed to load emails:", err);
+                listContainer.innerHTML = `<div class="p-6 text-center text-rose-400 text-xs">Failed to load emails. Check server connection.</div>`;
+            }
+        }
+
+        // Render email items in list
+        function renderEmailList(emails) {
+            const list = document.getElementById('emailList');
+            if (!emails.length) {
+                list.innerHTML = `
+                    <div class="p-8 text-center text-slate-400 space-y-2">
+                        <i data-lucide="mail-x" class="w-8 h-8 mx-auto text-slate-400"></i>
+                        <p class="text-xs">No emails found matching current criteria.</p>
+                    </div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = emails.map(e => {
+                const isSelected = e.id === selectedEmailId;
+                const deadlineBadge = renderDeadlineBadge(e.deadline);
+                const senderInitial = (e.sender || 'U').charAt(0).toUpperCase();
+
+                return `
+                <div onclick="selectEmail(${e.id})"
+                     class="p-3.5 cursor-pointer transition border-b border-white/5 hover:bg-white/[0.04] ${isSelected ? 'selected-email-card' : ''}">
+                    
+                    <div class="flex items-start justify-between gap-2 mb-1">
+                        <div class="flex items-center space-x-2 truncate">
+                            <div class="w-6 h-6 rounded-full bg-slate-800 border border-white/10 text-[10px] font-bold text-slate-200 flex items-center justify-center flex-shrink-0">
+                                ${senderInitial}
+                            </div>
+                            <span class="text-xs font-semibold text-slate-200 truncate">${escapeHtml(e.sender)}</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
+                            ${formatDate(e.receivedDate)}
+                        </span>
+                    </div>
+
+                    <div class="text-xs font-medium text-white mb-1 truncate leading-snug">
+                        ${escapeHtml(e.subject || '(No subject)')}
+                    </div>
+
+                    <p class="text-[11px] text-slate-400 line-clamp-2 mb-2 leading-relaxed">
+                        ${escapeHtml(e.snippet || '')}
+                    </p>
+
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            ${deadlineBadge}
+                            ${e.organization ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-white/10">${escapeHtml(e.organization)}</span>` : ''}
+                            ${e.tags.map(t => `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium text-white" style="background:${t.color}cc">${escapeHtml(t.name)}</span>`).join('')}
+                        </div>
+                        <span class="text-[9px] uppercase tracking-wider text-slate-400 px-1 py-0.5 rounded bg-white/5">
+                            ${e.accountProvider === 'GMAIL' ? 'Gmail' : 'IMAP'}
+                        </span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // Render deadline badge with smart urgency
+        function renderDeadlineBadge(deadlineStr) {
+            if (!deadlineStr) return '';
+            const due = new Date(deadlineStr);
+            const now = new Date();
+            const diffHours = (due - now) / (1000 * 60 * 60);
+
+            if (diffHours < 0) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-600/40">
+                    <i data-lucide="alert-triangle" class="w-3 h-3 text-rose-400"></i> Overdue
+                </span>`;
+            } else if (diffHours < 24) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse-subtle">
+                    <i data-lucide="flame" class="w-3 h-3 text-rose-400"></i> Due in ${Math.round(diffHours)}h
+                </span>`;
+            } else if (diffHours < 72) {
+                const days = Math.ceil(diffHours / 24);
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i> ${days}d left
+                </span>`;
+            } else {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    <i data-lucide="calendar" class="w-3 h-3 text-indigo-400"></i> ${due.toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                </span>`;
+            }
+        }
+
+        // Select an email and load full details
+        async function selectEmail(id) {
+            selectedEmailId = id;
+            renderEmailList(currentEmails); // refresh highlight
+            loadEmailDetail(id);
+        }
+
+        async function loadEmailDetail(id) {
+            const pane = document.getElementById('emailDetailPane');
+            pane.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs"><i data-lucide="loader" class="w-6 h-6 animate-spin mx-auto text-indigo-400 mb-2"></i>Loading details...</div>`;
+            lucide.createIcons();
+
+            try {
+                const res = await fetch(`/api/emails/${id}`);
+                if (!res.ok) throw new Error("Email not found");
+                const email = await res.json();
+                renderEmailDetail(email);
+            } catch (err) {
+                pane.innerHTML = `<div class="p-8 text-center text-rose-400 text-xs">Failed to load email details.</div>`;
+            }
+        }
+
+        // Render full email reader
+        function renderEmailDetail(e) {
+            const pane = document.getElementById('emailDetailPane');
+            const hasHtml = Boolean(e.htmlBody && e.htmlBody.trim());
+
+            pane.innerHTML = `
+            <!-- Email Detail Header -->
+            <div class="p-6 border-b border-white/10 bg-[#0d121f]/80 backdrop-blur space-y-4">
+                
+                <div class="flex items-start justify-between gap-4">
+                    <div class="space-y-1 flex-1">
+                        <h1 class="text-xl font-bold text-white tracking-tight">${escapeHtml(e.subject || '(No subject)')}</h1>
+                        <div class="flex items-center space-x-2 text-xs text-slate-400">
+                            <span>From: <strong class="text-slate-200">${escapeHtml(e.sender)}</strong></span>
+                            <span>&bull;</span>
+                            <span>Account: <strong class="text-indigo-300">${escapeHtml(e.account)}</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Action toolbar -->
+                    <div class="flex items-center space-x-2 flex-shrink-0">
+                        ${e.deadline && e.deadlineId ? `
+                        <button onclick="toggleDeadlineResolved(${e.deadlineId}, ${e.deadlineResolved})"
+                                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg ${e.deadlineResolved ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10'} text-xs font-semibold shadow-md transition">
+                            <i data-lucide="${e.deadlineResolved ? 'check-circle-2' : 'circle'}" class="w-3.5 h-3.5 ${e.deadlineResolved ? 'text-emerald-400' : 'text-slate-400'}"></i>
+                            <span>${e.deadlineResolved ? 'Resolved' : 'Mark Done'}</span>
+                        </button>` : ''}
+
+                        ${e.deadline ? `
+                        <button onclick="downloadCalendarInvite('${escapeHtml(e.subject)}', '${e.deadline}')"
+                                class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition">
+                            <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+                            <span>Add to Calendar</span>
+                        </button>` : ''}
+                    </div>
+                </div>
+
+                <!-- Deadline Banner if present -->
+                ${e.deadline ? `
+                <div class="p-4 rounded-xl bg-gradient-to-r ${e.deadlineResolved ? 'from-emerald-950/40 to-slate-900 border-emerald-500/30' : 'from-rose-950/60 to-purple-950/40 border-rose-500/30'} border flex items-center justify-between gap-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl ${e.deadlineResolved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'} flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="${e.deadlineResolved ? 'check-check' : 'alarm-clock'}" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold ${e.deadlineResolved ? 'text-emerald-300' : 'text-rose-300'} flex items-center gap-2">
+                                ${e.deadlineResolved ? 'Deadline Completed' : 'Action Deadline Detected'}
+                                <span class="text-[10px] font-normal px-2 py-0.5 rounded-full ${e.deadlineResolved ? 'bg-emerald-500/20 text-emerald-200' : 'bg-rose-500/20 text-rose-200'}">
+                                    ${Math.round((e.deadlineConfidence || 0.7) * 100)}% Confidence
+                                </span>
+                            </div>
+                            <div class="text-sm font-extrabold text-white">
+                                ${new Date(e.deadline).toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                            </div>
+                            ${e.deadlineDescription ? `<p class="text-[11px] text-slate-300 italic mt-0.5">"${escapeHtml(e.deadlineDescription)}"</p>` : (e.deadlineText ? `<p class="text-[11px] text-rose-200/80 italic mt-0.5">"${escapeHtml(e.deadlineText)}"</p>` : '')}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        ${renderDeadlineBadge(e.deadline)}
+                    </div>
+                </div>` : ''}
+
+                <!-- Attachments bar if present -->
+                ${e.attachments && e.attachments.length > 0 ? `
+                <div class="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+                    <div class="flex items-center space-x-2 text-xs font-semibold text-slate-300">
+                        <i data-lucide="paperclip" class="w-3.5 h-3.5 text-indigo-400"></i>
+                        <span>Attachments (${e.attachments.length})</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${e.attachments.map(att => `
+                            <div class="inline-flex items-center space-x-2 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-200">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                <span class="font-medium">${escapeHtml(att.filename)}</span>
+                                <span class="text-[10px] text-slate-400">(${Math.round(att.sizeBytes / 1024)} KB)</span>
+                                ${att.hasExtractedText ? `<span class="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300">Text Parsed</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>` : ''}
+
+                <!-- Tags & Metadata Row -->
+                <div class="flex items-center justify-between gap-4 text-xs pt-1">
+                    <div class="flex items-center space-x-2 flex-wrap">
+                        <span class="text-slate-400 text-[11px] font-semibold">Tags:</span>
+                        ${e.tags.map(t => `
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-white" style="background:${t.color}">
+                                ${escapeHtml(t.name)}
+                                <button onclick="removeTagFromEmail(${e.id}, ${t.id})" class="hover:text-black transition" title="Remove tag">&times;</button>
+                            </span>
+                        `).join('')}
+
+                        <!-- Add Tag Picker Dropdown Trigger -->
+                        <select onchange="addTagToEmail(${e.id}, this.value); this.value='';"
+                                class="bg-slate-900 border border-white/10 rounded-lg text-[11px] text-slate-300 px-2 py-0.5 focus:outline-none">
+                            <option value="">+ Add Tag</option>
+                            ${allTags.filter(at => !e.tags.some(et => et.id === at.id))
+                                     .map(at => `<option value="${at.id}">${escapeHtml(at.name)}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    ${e.organization ? `
+                    <div class="flex items-center space-x-1.5 text-slate-400 text-xs">
+                        <i data-lucide="building" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Organization: <strong class="text-slate-200">${escapeHtml(e.organization)}</strong></span>
+                    </div>` : ''}
+                </div>
+            </div>
+
+            <!-- Body Content Container -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div class="p-6 rounded-2xl glass-panel text-sm text-slate-200 leading-relaxed font-sans shadow-lg">
+                    ${hasHtml ? e.htmlBody : `<pre class="whitespace-pre-wrap font-sans text-sm">${escapeHtml(e.plainText || e.snippet || 'No message content.')}</pre>`}
+                </div>
+            </div>
+            `;
+
+            lucide.createIcons();
+        }
+
+        // Add tag to email
+        async function addTagToEmail(emailId, tagId) {
+            if (!tagId) return;
+            try {
+                const res = await fetch(`/api/emails/${emailId}/tags/${tagId}`, {method: 'POST'});
+                if (res.ok) {
+                    showToast("Tag applied", "check");
+                    await loadEmails();
+                    loadEmailDetail(emailId);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Remove tag from email
+        async function removeTagFromEmail(emailId, tagId) {
+            try {
+                const res = await fetch(`/api/emails/${emailId}/tags/${tagId}`, {method: 'DELETE'});
+                if (res.ok) {
+                    showToast("Tag removed", "check");
+                    await loadEmails();
+                    loadEmailDetail(emailId);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Toggle Deadline Resolved
+        async function toggleDeadlineResolved(deadlineId, isCurrentlyResolved) {
+            try {
+                const endpoint = isCurrentlyResolved ? 'unresolve' : 'resolve';
+                const res = await fetch(`/api/deadlines/${deadlineId}/${endpoint}`, {method: 'POST'});
+                if (res.ok) {
+                    showToast(isCurrentlyResolved ? "Deadline reopened" : "Deadline marked completed!", "check");
+                    await loadEmails();
+                    if (selectedEmailId) loadEmailDetail(selectedEmailId);
+                }
+            } catch (e) {
+                showToast("Failed to update deadline status", "alert-circle");
+            }
+        }
+
+        // Load Tags
+        async function loadTags() {
+            try {
+                const res = await fetch('/api/tags');
+                allTags = await res.json();
+                document.getElementById('statTotalTags')?.innerText = allTags.length;
+
+                const container = document.getElementById('tagsList');
+                if (!allTags.length) {
+                    container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">No custom tags yet</span>`;
+                    return;
+                }
+
+                container.innerHTML = allTags.map(t => `
+                    <button onclick="filterByTag(${t.id}, '${escapeHtml(t.name)}')"
+                            class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition ${activeTagId === t.id ? 'bg-white/10 text-white' : ''}">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2.5 h-2.5 rounded-full" style="background:${t.color}"></span>
+                            <span>${escapeHtml(t.name)}</span>
+                        </div>
+                    </button>
+                `).join('');
+            } catch (e) {
+                console.error("Failed to load tags", e);
+            }
+        }
+
+        // Load Organizations
+        async function loadOrgs() {
+            try {
+                const res = await fetch('/api/orgs');
+                allOrgs = await res.json();
+                const container = document.getElementById('orgsList');
+                if (!allOrgs.length) {
+                    container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">None detected yet</span>`;
+                    return;
+                }
+
+                container.innerHTML = allOrgs.map(o => `
+                    <button onclick="filterByOrg(${o.id}, '${escapeHtml(o.name)}')"
+                            class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition ${activeOrgId === o.id ? 'bg-white/10 text-white' : ''}">
+                        <div class="flex items-center space-x-2 truncate">
+                            <i data-lucide="building-2" class="w-3.5 h-3.5 text-slate-400"></i>
+                            <span class="truncate">${escapeHtml(o.name)}</span>
+                        </div>
+                    </button>
+                `).join('');
+                lucide.createIcons();
+            } catch (e) {
+                console.error("Failed to load orgs", e);
+            }
+        }
+
+        // Filter Handlers
+        function setFilter(type) {
+            activeFilter = type;
+            activeTagId = null;
+            activeOrgId = null;
+
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('bg-white/10', 'text-white'));
+            const activeNav = document.getElementById(`nav-${type}`);
+            if (activeNav) activeNav.classList.add('bg-white/10', 'text-white');
+
+            document.getElementById('feedTitle').innerText = type === 'deadlines' ? 'Action Deadlines' : 'All Inboxes';
+            loadEmails();
+        }
+
+        function filterByTag(id, name) {
+            activeFilter = 'tag';
+            activeTagId = id;
+            activeOrgId = null;
+            document.getElementById('feedTitle').innerText = `Tag: ${name}`;
+            loadTags(); // refresh highlights
+            loadEmails();
+        }
+
+        function filterByOrg(id, name) {
+            activeFilter = 'org';
+            activeOrgId = id;
+            activeTagId = null;
+            document.getElementById('feedTitle').innerText = `Org: ${name}`;
+            loadOrgs();
+            loadEmails();
+        }
+
+        function setSort(sortType) {
+            activeSort = sortType;
+            document.querySelectorAll('.sort-btn').forEach(b => {
+                b.classList.remove('bg-indigo-600', 'text-white');
+                b.classList.add('text-slate-400');
+            });
+            const btn = document.getElementById(`sort-${sortType}`);
+            btn.classList.add('bg-indigo-600', 'text-white');
+            btn.classList.remove('text-slate-400');
+            loadEmails();
+        }
+
+        // Search Handlers
+        let searchTimeout = null;
+        function handleSearch(val) {
+            searchQuery = val;
+            const clearBtn = document.getElementById('clearSearchBtn');
+            clearBtn.classList.toggle('hidden', !val);
+
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                loadEmails();
+            }, 300);
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            handleSearch('');
+        }
+
+        // Trigger manual sync now
+        async function triggerManualSync() {
+            const icon = document.getElementById('syncIcon');
+            const text = document.getElementById('syncText');
+            icon.classList.add('animate-spin');
+            text.innerText = 'Syncing...';
+
+            try {
+                const res = await fetch('/api/sync/now', {method: 'POST'});
+                const data = await res.json();
+                showToast("Sync completed successfully", "check");
+                await loadEmails();
+                await loadTags();
+                await loadOrgs();
+            } catch (e) {
+                showToast("Sync completed with warnings", "alert-circle");
+            } finally {
+                icon.classList.remove('animate-spin');
+                text.innerText = 'Sync Now';
+            }
+        }
+
+        // Handle Add IMAP submit
+        async function handleImapSubmit(e) {
+            e.preventDefault();
+            const email = document.getElementById('imapEmail').value;
+            const host = document.getElementById('imapHost').value;
+            const port = document.getElementById('imapPort').value;
+            const password = document.getElementById('imapPassword').value;
+
+            try {
+                const res = await fetch('/api/accounts/imap', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email, host, port, password })
+                });
+                if (res.ok) {
+                    showToast("IMAP account registered!", "check");
+                    closeImapModal();
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast("Failed to register IMAP account", "alert-circle");
+                }
+            } catch (err) {
+                showToast("Error connecting to server", "alert-circle");
+            }
+        }
+
+        // Handle Create Tag submit
+        async function handleTagSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById('newTagNameInput').value.trim();
+            const color = document.getElementById('newTagColorInput').value;
+            if (!name) return;
+
+            try {
+                const res = await fetch('/api/tags', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name, color })
+                });
+                if (res.ok) {
+                    showToast(`Tag "${name}" created!`, "check");
+                    closeNewTagModal();
+                    document.getElementById('newTagNameInput').value = '';
+                    await loadTags();
+                } else {
+                    showToast("Tag already exists or invalid", "alert-circle");
+                }
+            } catch (err) {
+                showToast("Failed to create tag", "alert-circle");
+            }
+        }
+
+        // Export .ics calendar invite for deadlines
+        function downloadCalendarInvite(subject, dueDateStr) {
+            const due = new Date(dueDateStr);
+            const end = new Date(due.getTime() + 60 * 60 * 1000); // 1 hour duration
+            const formatIcsDate = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+            const icsData = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//SmartDashboard//Deadline//EN',
+                'BEGIN:VEVENT',
+                `SUMMARY:${subject}`,
+                `DESCRIPTION:Extracted deadline reminder from Smart Dashboard`,
+                `DTSTART:${formatIcsDate(due)}`,
+                `DTEND:${formatIcsDate(end)}`,
+                'STATUS:CONFIRMED',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\r\n');
+
+            const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', `${subject.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_')}_deadline.ics`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("Calendar (.ics) downloaded!", "calendar");
+        }
+
+        // UI Helpers
+        function showToast(msg, iconName = "check") {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3500);
+        }
+
+        function toggleAccountMenu() {
+            document.getElementById('accountDropdown').classList.toggle('hidden');
+        }
+
+        window.addEventListener('click', (e) => {
+            if (!e.target.closest('#accountDropdown') && !e.target.closest('button[onclick="toggleAccountMenu()"]')) {
+                document.getElementById('accountDropdown').classList.add('hidden');
+            }
+        });
+
+        function openImapModal() {
+            document.getElementById('imapModal').classList.remove('hidden');
+            document.getElementById('accountDropdown').classList.add('hidden');
+        }
+        function closeImapModal() { document.getElementById('imapModal').classList.add('hidden'); }
+
+        function openNewTagModal() { document.getElementById('newTagModal').classList.remove('hidden'); }
+        function closeNewTagModal() { document.getElementById('newTagModal').classList.add('hidden'); }
+
+        function formatDate(dStr) {
+            if (!dStr) return '';
+            const d = new Date(dStr);
+            const now = new Date();
+            if (d.toDateString() === now.toDateString()) {
+                return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            }
+            return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.toString().replace(/[&<>"']/g, m => map[m]);
+        }
+    </script>
+</body>
+</html>
