@@ -339,9 +339,19 @@
         let allTags = [];
         let allOrgs = [];
 
+        function safeCreateIcons() {
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                try {
+                    window.lucide.createIcons();
+                } catch (e) {
+                    console.warn("Lucide warning:", e);
+                }
+            }
+        }
+
         // Initialization
         document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
+            safeCreateIcons();
             loadTags();
             loadOrgs();
             loadEmails();
@@ -353,6 +363,10 @@
                     document.getElementById('searchInput').focus();
                 }
             });
+        });
+
+        window.addEventListener('load', () => {
+            safeCreateIcons();
         });
 
         // Load emails with current filters
@@ -367,6 +381,7 @@
 
             try {
                 const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 currentEmails = await res.json();
                 document.getElementById('feedCount').innerText = `${currentEmails.length} email${currentEmails.length === 1 ? '' : 's'}`;
                 renderEmailList(currentEmails);
@@ -377,7 +392,10 @@
                 }
             } catch (err) {
                 console.error("Failed to load emails:", err);
-                listContainer.innerHTML = `<div class="p-6 text-center text-rose-400 text-xs">Failed to load emails. Check server connection.</div>`;
+                listContainer.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">
+                    <p class="text-rose-400 font-semibold mb-1">Failed to load emails</p>
+                    <p class="text-[11px] text-slate-400">Click &quot;Sync Now&quot; above to fetch latest messages from your inbox.</p>
+                </div>`;
             }
         }
 
@@ -388,9 +406,10 @@
                 list.innerHTML = `
                     <div class="p-8 text-center text-slate-400 space-y-2">
                         <i data-lucide="mail-x" class="w-8 h-8 mx-auto text-slate-400"></i>
-                        <p class="text-xs">No emails found matching current criteria.</p>
+                        <p class="text-xs font-semibold">No emails found in inbox.</p>
+                        <p class="text-[11px] text-slate-400">Click &quot;Sync Now&quot; above to fetch latest inbox messages.</p>
                     </div>`;
-                lucide.createIcons();
+                safeCreateIcons();
                 return;
             }
 
@@ -436,7 +455,7 @@
                 </div>`;
             }).join('');
 
-            lucide.createIcons();
+            safeCreateIcons();
         }
 
         // Render deadline badge with smart urgency
@@ -476,7 +495,7 @@
         async function loadEmailDetail(id) {
             const pane = document.getElementById('emailDetailPane');
             pane.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs"><i data-lucide="loader" class="w-6 h-6 animate-spin mx-auto text-indigo-400 mb-2"></i>Loading details...</div>`;
-            lucide.createIcons();
+            safeCreateIcons();
 
             try {
                 const res = await fetch(`/api/emails/${id}`);
@@ -605,7 +624,7 @@
             </div>
             `;
 
-            lucide.createIcons();
+            safeCreateIcons();
         }
 
         // Add tag to email
@@ -654,12 +673,13 @@
 
         // Load Tags
         async function loadTags() {
+            const container = document.getElementById('tagsList');
             try {
                 const res = await fetch('/api/tags');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 allTags = await res.json();
                 document.getElementById('statTotalTags')?.innerText = allTags.length;
 
-                const container = document.getElementById('tagsList');
                 if (!allTags.length) {
                     container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">No custom tags yet</span>`;
                     return;
@@ -675,16 +695,18 @@
                     </button>
                 `).join('');
             } catch (e) {
-                console.error("Failed to load tags", e);
+                console.warn("Failed to load tags", e);
+                container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">No custom tags</span>`;
             }
         }
 
         // Load Organizations
         async function loadOrgs() {
+            const container = document.getElementById('orgsList');
             try {
                 const res = await fetch('/api/orgs');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 allOrgs = await res.json();
-                const container = document.getElementById('orgsList');
                 if (!allOrgs.length) {
                     container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">None detected yet</span>`;
                     return;
@@ -699,9 +721,10 @@
                         </div>
                     </button>
                 `).join('');
-                lucide.createIcons();
+                safeCreateIcons();
             } catch (e) {
-                console.error("Failed to load orgs", e);
+                console.warn("Failed to load orgs", e);
+                container.innerHTML = `<span class="text-[11px] text-slate-400 px-2 italic">None detected yet</span>`;
             }
         }
 
@@ -777,10 +800,15 @@
             try {
                 const res = await fetch('/api/sync/now', {method: 'POST'});
                 const data = await res.json();
-                showToast("Sync completed successfully", "check");
-                await loadEmails();
-                await loadTags();
-                await loadOrgs();
+                if (data.success) {
+                    showToast("Sync completed successfully!", "check");
+                    await loadEmails();
+                    await loadTags();
+                    await loadOrgs();
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showToast(data.message || data.error || "Sync returned warning", "alert-circle");
+                }
             } catch (e) {
                 showToast("Sync completed with warnings", "alert-circle");
             } finally {

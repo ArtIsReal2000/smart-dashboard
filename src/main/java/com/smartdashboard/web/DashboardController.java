@@ -1,14 +1,21 @@
 package com.smartdashboard.web;
 
+import com.smartdashboard.crypto.AesEncryptor;
+import com.smartdashboard.domain.MailAccount;
 import com.smartdashboard.domain.User;
 import com.smartdashboard.repository.*;
+import com.smartdashboard.service.sync.SyncOrchestrator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -19,24 +26,36 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Controller
 public class DashboardController {
+
+    private static final Logger log = LoggerFactory.getLogger(DashboardController.class);
 
     private final UserRepository users;
     private final EmailMessageRepository emails;
     private final TagRepository tags;
     private final OrganizationRepository orgs;
     private final MailAccountRepository accounts;
+    private final OAuth2AuthorizedClientRepository authorizedClients;
+    private final AesEncryptor encryptor;
+    private final SyncOrchestrator syncOrchestrator;
 
     public DashboardController(UserRepository users, EmailMessageRepository emails,
                                TagRepository tags, OrganizationRepository orgs,
-                               MailAccountRepository accounts) {
+                               MailAccountRepository accounts,
+                               OAuth2AuthorizedClientRepository authorizedClients,
+                               AesEncryptor encryptor,
+                               SyncOrchestrator syncOrchestrator) {
         this.users = users;
         this.emails = emails;
         this.tags = tags;
         this.orgs = orgs;
         this.accounts = accounts;
+        this.authorizedClients = authorizedClients;
+        this.encryptor = encryptor;
+        this.syncOrchestrator = syncOrchestrator;
     }
 
     @GetMapping("/login")
@@ -79,10 +98,41 @@ public class DashboardController {
     }
 
     @GetMapping({"/", "/dashboard"})
-    public String dashboard(Authentication authentication, Model model) {
+    public String dashboard(Authentication authentication, HttpServletRequest request, Model model) {
         User user = resolveCurrentUser(authentication);
         if (user == null) {
             return "redirect:/login";
+        }
+
+        // Auto-heal: If user has no connected accounts yet, check if OAuth client is available in session
+        if (accounts.findByUser(user).isEmpty() && authentication != null) {
+            try {
+                OAuth2AuthorizedClient client = authorizedClients.loadAuthorizedClient("google", authentication, request);
+                if (client != null) {
+                    log.info("Auto-healing MailAccount for user {} via active OAuth session", user.getEmail());
+                    MailAccount a = new MailAccount();
+                    a.setUser(user);
+                    a.setProvider(MailAccount.Provider.GMAIL);
+                    a.setEmailAddress(user.getEmail());
+                    if (client.getRefreshToken() != null) {
+                        a.setEncryptedRefreshToken(encryptor.encrypt(client.getRefreshToken().getTokenValue()));
+                    }
+                    if (client.getAccessToken() != null) {
+                        a.setEncryptedAccessToken(encryptor.encrypt(client.getAccessToken().getTokenValue()));
+                        a.setAccessTokenExpiry(client.getAccessToken().getExpiresAt());
+                    }
+                    accounts.save(a);
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            syncOrchestrator.syncAccount(a);
+                        } catch (Exception ex) {
+                            log.warn("Auto-sync failed for {}: {}", a.getEmailAddress(), ex.getMessage());
+                        }
+                    });
+                }
+            } catch (Exception ex) {
+                log.debug("Auto-heal check skipped: {}", ex.getMessage());
+            }
         }
 
         model.addAttribute("user", user);

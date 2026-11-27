@@ -59,6 +59,7 @@ public class GmailSyncService {
     @Transactional
     public void sync(MailAccount account) {
         try {
+            log.info("Starting Gmail sync for account: {}", account.getEmailAddress());
             String accessToken = tokens.getValidAccessToken(account);
             Gmail gmail = new Gmail.Builder(
                     GoogleNetHttpTransport.newTrustedTransport(),
@@ -71,21 +72,33 @@ public class GmailSyncService {
                 ? "in:inbox"
                 : "in:inbox after:" + account.getLastSyncAt().getEpochSecond();
 
+            log.info("Querying Gmail messages for {} with filter: {}", account.getEmailAddress(), query);
             ListMessagesResponse list = gmail.users().messages()
                 .list("me").setQ(query).setMaxResults(50L).execute();
 
-            if (list.getMessages() == null) {
+            if (list.getMessages() == null || list.getMessages().isEmpty()) {
+                log.info("No messages found for {} matching query", account.getEmailAddress());
                 account.setLastSyncAt(Instant.now());
                 return;
             }
 
+            log.info("Found {} messages to sync for {}", list.getMessages().size(), account.getEmailAddress());
+            int syncedCount = 0;
             for (Message ref : list.getMessages()) {
-                if (emails.existsByAccountAndProviderMessageId(account, ref.getId())) continue;
-                Message full = gmail.users().messages().get("me", ref.getId())
-                    .setFormat("full").execute();
-                persist(account, full, gmail);
+                try {
+                    if (emails.existsByAccountAndProviderMessageId(account, ref.getId())) {
+                        continue;
+                    }
+                    Message full = gmail.users().messages().get("me", ref.getId())
+                        .setFormat("full").execute();
+                    persist(account, full, gmail);
+                    syncedCount++;
+                } catch (Exception msgEx) {
+                    log.warn("Skipping message {} for {}: {}", ref.getId(), account.getEmailAddress(), msgEx.getMessage());
+                }
             }
             account.setLastSyncAt(Instant.now());
+            log.info("Gmail sync finished for {}: successfully imported {} new emails", account.getEmailAddress(), syncedCount);
         } catch (Exception e) {
             log.error("Gmail sync failed for {}: {}", account.getEmailAddress(), e.getMessage());
             throw new RuntimeException("Gmail sync failed for " + account.getEmailAddress(), e);

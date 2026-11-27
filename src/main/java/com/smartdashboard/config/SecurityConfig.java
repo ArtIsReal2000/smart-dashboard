@@ -16,16 +16,19 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
-                                           OAuthSuccessHandler successHandler) throws Exception {
+                                           OAuthSuccessHandler successHandler,
+                                           ClientRegistrationRepository clientRegistrationRepository) throws Exception {
         http
             .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**", "/api/**", "/dev-login"))
             .headers(headers -> headers.addHeaderWriter(
                 new XFrameOptionsHeaderWriter(XFrameOptionsHeaderWriter.XFrameOptionsMode.SAMEORIGIN)))
             .authorizeHttpRequests(a -> a
-                .requestMatchers("/login", "/dev-login", "/css/**", "/js/**", "/error", "/h2-console/**").permitAll()
+                .requestMatchers("/login", "/dev-login", "/css/**", "/js/**", "/error", "/h2-console/**", "/health").permitAll()
                 .anyRequest().authenticated())
             .oauth2Login(o -> o
                 .loginPage("/login")
+                .authorizationEndpoint(a -> a
+                    .authorizationRequestResolver(authorizationRequestResolver(clientRegistrationRepository)))
                 .successHandler(successHandler))
             .logout(l -> l.logoutSuccessUrl("/login?logout=true"));
         return http.build();
